@@ -1,0 +1,50 @@
+{
+  "name": "huinity-controller-demon",
+  "version": "21.3.5",
+  "description": "Huinity Player",
+  "productName": "Huinity Player",
+  "main": "main.js",
+  "author": "Lupandin Denys",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron . --no-icon"
+  },
+  "build": {
+    "asar": "true",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "ia32"
+          ]
+        }
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/island-web/GTP-HUINITY.git"
+  },
+  "bugs": {
+    "url": "https://github.com/island-web/GTP-HUINITY/issues"
+  },
+  "homepage": "https://github.com/island-web/GTP-HUINITY#readme",
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "moment": "^2.29.4",
+    "node-schedule": "^2.1.1",
+    "nodejs-file-downloader": "^4.12.1",
+    "path": "^0.12.7",
+    "pm2": "^5.3.0",
+    "shelljs": "^0.8.5",
+    "socket.io-client": "^4.6.1",
+    "uuid": "^7.0.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^5.59.9",
+    "@typescript-eslint/parser": "^5.59.9",
+    "electron": "^21.3.5",
+    "eslint": "^8.42.0"
+  }
+}
