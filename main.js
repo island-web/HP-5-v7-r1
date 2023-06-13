@@ -5,16 +5,37 @@ const os = require('os');
 const fs = require('fs');
 const pm2 = require('pm2');
 
-
 const path_app = path.join(os.homedir(), 'huinity');
 const LOG = require(path.join(__dirname, 'save_log.js'));
+
+
+if (!fs.existsSync(path_app)) {
+  (async () => {
+    await require(path.join(__dirname, 'dir.js'));
+    LOG.save_log("directories app created: successful");
+  })().catch(e => { console.log(e); LOG.save_log(e, 'error'); });
+}
+
+exec('pm2 -v', (error, stdout, stderr) => {
+  if (error) {
+    LOG.save_log("start install dependencies");
+    exec('npm install pm2 -g', (err, stdout, stderr) => {
+      if (err) { LOG.save_log(err, 'error') }
+      else { LOG.save_log("install pm2 global module: successful") }
+    });
+  }
+});
+
+
+
+
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 800,
-    height: 300,
+    height: 200,
     frame: false,
-    backgroundColor: '#000',
+    backgroundColor: '#1b4758',
     show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -24,60 +45,39 @@ function createWindow() {
     }
   });
 
+  const initModule = new BrowserWindow({
+    width: 800,
+    height: 200,
+    frame: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: true,
+      contextIsolation: false,
+      enableRemoteModule: true
+    }
+  });
+
   mainWindow.loadFile('index.html');
+  initModule.loadFile('init.html');
+  initModule.webContents.openDevTools();
   mainWindow.webContents.openDevTools();
 
-  const reload_station = () => { app.relaunch(); app.quit() }
+  const reload_station = () => { mainWindow.reload() }
 
-  if (!fs.existsSync(path_app)) {
+  ipcMain.on('reload', () => { setTimeout(() => { reload_station }, 5000) });
+  ipcMain.on('show_window_init', () => { initModule.show() });
+  ipcMain.on('minimize_window_init', () => { initModule.minimize() });
+  ipcMain.on('close_window_init', () => { initModule.close(); mainWindow.reload() });
 
-    const createDirCommand = `node ${path.join(__dirname, 'dir.js')}`;
-    
-    exec(createDirCommand, (error, stdout, stderr) => {
-      if (error) { throw error }
-      else {
-        LOG.save_log("Directories created successful")
-        fs.writeFileSync(path.join(__dirname, 'init.json'), JSON.stringify({initialization:"true", first:"true"}, 'utf-8'));
-        LOG.save_log("Key initialization === true");
-        LOG.save_log("RELOAD STATION").then(() => { reload_station })
-      }
-    })
-  }
 
-  const runInstallationPM2 = () => {
-    const installPM2Command = `node ${path.join(__dirname, 'install_pm2.js')}`;
-    exec(installPM2Command, (error, stdout, stderr) => {
-      if (error) { 
-        try {
-          LOG.save_log("Error connected to demon pm2INSTALL", 'error');
-        } catch (error) { throw error }
-      }
-    })
-  }
-
-  const checkPM2Installation = () => {
-    exec('pm2 -v', (error, stdout, stderr) => {
-      if (error) { runInstallationPM2() }
-      //const createConnectPM2Command = `node ${path.join(__dirname, 'pm2.js')}`;
-      //exec(createConnectPM2Command, (error, stdout, stderr) => { if (error) { throw error } });
-    })
-  }
-
-  checkPM2Installation();
-
-  ipcMain.on('reload', () => { reload_station });
 }
 
 app.whenReady().then(() => {
   createWindow();
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) { createWindow() }
   });
-
 });
 
-app.on('window-all-closed', function () {
-  app.quit();
-});
+app.on('window-all-closed', function () { app.quit() });

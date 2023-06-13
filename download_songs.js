@@ -18,7 +18,7 @@ const SONGS = check_music(ALL_MUSIC);
 
 
 let count_songs_download = 0;
-
+let count_error = 0;
 
 function send_msg(com = 'ONLINE', msg = null ){ process.send({ type : 'process:msg', data : { name: processName, command: com, message: msg }})}
 send_msg();
@@ -44,8 +44,13 @@ function check_music(all_music) {
 }
 
 
-if (SONGS.length > 0) { download() }
-else { send_msg('END_DOWNLOAD') }
+if (SONGS.length > 0) {
+    download();
+    const init = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'init.json')));
+    init['all_songs_download'] = SONGS.length;
+    fs.writeFileSync(path.join(__dirname, 'storage', 'init.json'), JSON.stringify(init))
+}
+else { send_msg('NO CONTENT DOWNLOAD') }
 
 
 function download() {
@@ -58,8 +63,12 @@ function download() {
             const { filePath, downloadStatus } = await downloader.download();
             count_songs_download++;
             if (count_songs_download < SONGS.length) { download() }
-            else { send_msg('END_DOWNLOAD') }
-        } catch (error) { send_msg('ERROR') }
+            else { send_msg('END DOWNLOAD') }
+        } catch (error) { 
+            count_error++;
+            if(count_error < 8){ download() }
+            else{ send_msg('ERROR DOWNLOAD SONGS 8') }
+        }
 
     })()
 }

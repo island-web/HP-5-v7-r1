@@ -39,8 +39,13 @@ function check_adv() {
 
 
 
-if (ADV.length > 0) { download_ad() }
-else { send_msg('END_DOWNLOAD') }
+if (ADV.length > 0) { 
+    download_ad();
+    const init = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'init.json')));
+    init['all_adv_download'] = ADV.length;
+    fs.writeFileSync(path.join(__dirname, 'storage', 'init.json'), JSON.stringify(init))
+}
+else { send_msg('NO CONTENT DOWNLOAD') }
 
 
 
@@ -54,8 +59,8 @@ function download_ad() {
             const { filePath, downloadStatus } = await downloader.download();
             count_adv_download++;
             if (count_adv_download < ADV.length) { download_ad() }
-            else { send_msg('END_DOWNLOAD'); }
-        } catch (error) { send_msg('ERROR') }
+            else { send_msg('END DOWNLOAD'); }
+        } catch (error) { send_msg('ERROR'); download_ad() }
 
     })()
 }

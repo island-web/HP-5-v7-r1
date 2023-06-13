@@ -19,12 +19,19 @@ function send_msg(com = 'ONLINE', msg = null ){
 send_msg();
 
 
-SOCKET.on("connect", () => { LOG.save_log("SOCKET CONNECT TO SERVER", "worker") });
-SOCKET.on("connect_error", (error) => { LOG.save_log("SOCKET CONNECT ERROR TO SERVER", "error") });
+SOCKET.on("connect", () => { console.log("SOCKET CONNECT TO SERVER") });
+
+SOCKET.on("connect_error", (error) => {
+  console.log("SOCKET CONNECT !!!ERROR!!! TO SERVER");
+  send_msg("ERROR CONNECT", error);
+});
+
 SOCKET.on('config', conf => { 
-  LOG.save_log("GET CONFIG STATION", 'work');
+  console.log("GET CONFIG STATION FROM SERVER: SUCCESSFUL");
+
   EXPORTS.set_config(conf);
-  send_msg("CONFIG", conf);
+  
+  send_msg("CONFIG OK", conf);
 });
 
 

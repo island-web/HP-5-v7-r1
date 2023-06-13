@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.cdnfonts.com/css/terminal" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+
+
+    <title>init-module</title>
+    <style>
+        body {
+            background-color: #001819;
+        }
+
+        p {
+            font-family: 'Terminal';
+            font-size: 12px;
+            color: #00f3ef;
+            text-align: left;
+            margin-top: 2%;
+        }
+        span {
+            font-family: 'Terminal';
+            font-size: 12px;
+            color: #00f3ef;
+            text-align: left;
+            margin-top: 2%;
+        }
+        .container {
+            display: flex;
+            flex-direction: row;
+        }
+        .center-block {
+            flex-basis: 80%;
+            background-color: #001819;
+        }
+        .left-block {
+            flex-basis: 10%;
+        }
+
+        .right-block {
+            flex-basis: 10%;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="left-block on" id="volume-btn" style="background-color: #001819; cursor: pointer;" onclick="sound_init()">
+            <i class="volume-icon fas fa-volume-mute" style="color: #00f3ef;"></i>
+        </div>
+        <div class="center-block">
+           <p id="head" style="text-align: center;">Install Huinity v.5.7.2</p>
+        </div>
+        <div class="right-block" style="text-align: right;" onclick="minimize()">
+            <i class="close-icon fa fa-times" style="color: #00f3ef; cursor: pointer;"></i>
+        </div>
+    </div>
+    <hr style="border: 1px solid #00f3ef;">
+    <div id="info_init">
+        
+    </div>
+    <script src="init.js"></script>
+    <script>
+        
+        
+        
+
+    </script>
+</body>
+
+</html>
