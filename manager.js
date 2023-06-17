@@ -11,21 +11,57 @@ const moment = require('moment-timezone');
 moment.tz.setDefault('Europe/Kiev');
 
 const data_start = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'init.json'), 'utf-8'));
+const OPTIONS = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'options.json'), 'utf-8'));
 const LOG = require(path.join(__dirname, 'save_log.js'));
 const PATH_APP = path.join(os.homedir(), 'huinity');
 const PATH_MUSIC = path.join(os.homedir(), 'huinity', 'music');
 
-
-let count = 0;
-let count_block = 0;
-let PLAY_NOW = "null";
 const BUFFER_ADV = [];
-let PLAY_LIST_INTERVAL = [];
+
+const PLAYER_MUSIC = document.getElementById('player_music');
+PLAYER_MUSIC.volume = 0.7;
+const volume_music = 0.7;
+
+const PLAYER_FIX = document.getElementById('player_fix');
+const volume_fix = 0.8;
+PLAYER_FIX.volume = volume_fix;
 
 
-if (data_start.first_start === 'init_start') {
-    ipcRenderer.send('show_window_init');
+
+
+let count_music = 0;
+let PLAY_NOW = "null";
+let WORK_NOW = "false";
+
+
+function fade_out() {
+    return new Promise((resolve, reject) => {
+        const fadeInterval = setInterval(() => {
+            if (PLAYER_MUSIC.volume > 0.1) {
+                PLAYER_MUSIC.volume -= 0.1;
+            } else {
+                PLAYER_MUSIC.volume = 0;
+                clearInterval(fadeInterval);
+                resolve();
+            }
+        }, 1000);
+    });
 }
+
+
+function fade_in() {
+    PLAYER_MUSIC.play();
+    const interval = setInterval(() => {
+        if (PLAYER_MUSIC.volume < volume_music) { PLAYER_MUSIC.volume += 0.1 }
+        else {
+            PLAYER_MUSIC.volume = volume_music;
+            clearInterval(interval);
+        }
+    }, 1000);
+}
+
+
+if (data_start.first_start === 'init_start') { ipcRenderer.send('show_window_init') }
 
 pm2.connect((err) => {
     if (err) {
@@ -39,7 +75,6 @@ pm2.connect((err) => {
         name: "ROUTER",
         maxRestarts: 10,
         maxMemoryRestart: '2G',
-        //instances: 1,
         autorestart: true,
         exec_mode: 'cluster'
     });
@@ -77,45 +112,45 @@ pm2.connect((err) => {
                     LOG.save_log(command);
                     break;
 
-                case "RELOAD APP":
-                    LOG.save_log(message, 'error');
-                    LOG.save_log("RELOAD APP");
-                    window.location.reload();
-                    break;
-
-                case "START WORK":
-                    LOG.save_log(command);
-                    if (data_start.first_start !== 'init_start') {
+                case "START WORK TIME":
+                    LOG.save_log(command + "STATION");
+                    if (data_start.first_start !== "init_start") {
                         start_work();
                     }
                     break;
 
-                case "STOP WORK":
-                    LOG.save_log(command);
-                    reload();
+                case "STOP WORK TIME":
+                    LOG.save_log("RELOAD PLAYER ---> [command: " + command + "]");
+                    fade_out();
+                    stop_work();
                     break;
 
-                case "FIX":
-                    LOG.save_log(command);
-                    start_fix(message);
-                    break;
-
-                case "RELOAD PLAYLISTS":
-                    LOG.save_log(command);
-                    reload();
-                    break;
-
-                case "START INTERVAL ADV":
-                    LOG.save_log(command);
-                    if (PLAY_NOW === "null") {
-                        PLAY_NOW = "interval";
-                        preparation_interval_adv(message);
-                    } else {
-                        BUFFER_ADV.push(message);
-                        LOG.save_log("INTERVAL ADV ADD IN BUFFER");
+                case "EVENT FIX":
+                    if (WORK_NOW === "true") {
+                        LOG.save_log("PLAY FIX ADV---> [command: " + message + "]");
+                        start_fix(message);
                     }
-
                     break;
+
+                case "INTERVAL ADV":
+                    if (WORK_NOW === "true") {
+                        LOG.save_log(command);
+                        if (PLAY_NOW === "null") {
+                            PLAY_NOW = "interval";
+                            preparation_interval_adv(message);
+                        } else {
+                            for (const obj of message) { BUFFER_ADV.push(obj) }
+                            LOG.save_log("INTERVAL ADV ADD IN BUFFER");
+                        }
+                    }
+                    break;
+
+                case "EVENT PLAYLIST":
+                    LOG.save_log("RELOAD PLAYER ---> [command: " + command + "]");
+                    fade_out().then(() => { window.location.reload() });
+                    break;
+
+
 
                 default:
                     break;
@@ -124,103 +159,87 @@ pm2.connect((err) => {
     });
 });
 
-const PLAYER_MUSIC = new Audio();
-let volume_music = 0.6;
-PLAYER_MUSIC.volume = volume_music;
 
-const PLAYER_FIX = new Audio();
-let volume_fix = 0.7;
-PLAYER_FIX.volume = volume_fix;
-
-const PLAYER_INTERVAL = new Audio();
-let volume_interval = 0.7;
-PLAYER_INTERVAL.volume = volume_interval;
 
 function conflict_fix(arr) {
     console.log('conflict_fix');
     return false;
 }
 
-function fade_out(audioElement) {
-    return new Promise((resolve, reject) => {
-        const fadeInterval = setInterval(() => {
-            if (audioElement.volume > 0.1) {
-                audioElement.volume -= 0.1;
-            } else {
-                audioElement.volume = 0;
-                clearInterval(fadeInterval);
-                resolve();
-            }
-        }, 1000);
-    });
-}
-
-
-function fade_in() {
-    PLAYER_MUSIC.play();
-    const interval = setInterval(() => {
-        if (PLAYER_MUSIC.volume < volume_music) { PLAYER_MUSIC.volume += 0.1 }
-        else {
-            PLAYER_MUSIC.volume = volume_music;
-            PLAY_NOW = "null";
-            clearInterval(interval);
-        }
-    }, 1000);
-}
 
 
 function start_work() {
+    WORK_NOW = "true";
     PLAYLIST = create_current_playlist();
-    shuffle(PLAYLIST);
-    console.log(PLAYLIST[count].full_name);
 
-    try {
-        PLAYER_MUSIC.src = path.join(PATH_MUSIC, PLAYLIST[count].full_name);
+    if (PLAYLIST.length === 0) { LOG.save_log("PLAYLIST IS EMPTY", 'error'); return; }
+    else {
+        shuffle(PLAYLIST);
+
         PLAYER_MUSIC.volume = 0;
-        PLAYER_MUSIC.play();
-        LOG.save_log(`START PLAY MUSIC: ${PLAYLIST[count].full_name}`);
+        PLAYER_MUSIC.src = path.join(PATH_MUSIC, PLAYLIST[count_music].full_name);
 
-        const interval = setInterval(() => {
-            if (PLAYER_MUSIC.volume < volume_music) {
-                PLAYER_MUSIC.volume += 0.1;
+        try {
+            PLAYER_MUSIC.play();
+            fade_in();
+            LOG.save_log(`START PLAY MUSIC: ${PLAYLIST[count_music].full_name}`);
+        } catch (error) { LOG.save_log("ERROR PLAY SONG: " + PLAYLIST[count_music].full_name, 'error'); console.log(error) }
+
+
+        PLAYER_MUSIC.addEventListener('error', function (event) {
+            console.log('Ошибка воспроизведения:', event.target.error);
+            LOG.save_log("ERROR PLAY SONG: " + PLAYLIST[count_music].full_name, 'error');
+            PLAYLIST.splice(count_music, 1);
+            LOG.save_log("DELETE SONG FROM PLAYLIST: " + PLAYLIST[count_music].full_name);
+            if (PLAYLIST.length === 0) {
+                LOG.save_log("PLAYLIST IS EMPTY", 'error');
+                //reload();
             } else {
-                PLAYER_MUSIC.volume = volume_music;
-                clearInterval(interval);
+                count_music++;
+                if (count_music === PLAYLIST.length) { count_music = 0; }
+                PLAYER_MUSIC.src = path.join(PATH_MUSIC, PLAYLIST[count_music].full_name);
             }
-        }, 1000);
+        });
 
-        PLAYER_MUSIC.addEventListener('error', (err) => { console.log(err) });
 
         PLAYER_MUSIC.addEventListener('ended', () => {
+            /*  if (UPDATE_PROGRAM === "true") {
+                 pm2.reload("ROUTER");
+                 window.location.reload();
+             } */
+
             if (BUFFER_ADV.length > 0 && PLAY_NOW === "null") {
-                console.log("BUFFER: " + BUFFER_ADV.length);
+                PLAY_NOW = "interval";
+                console.log(BUFFER_ADV);
+                LOG.save_log("PREPARATION ADV FROM BUFFER");
+                preparation_interval_adv(BUFFER_ADV);
+
             }
 
+            count_music++;
+            if (count_music === PLAYLIST.length) { count_music = 0 }
+            shuffle(PLAYLIST);
 
-            count++;
-            if (count === PLAYLIST.length) {
-                count = 0;
-            }
+            PLAYER_MUSIC.src = path.join(PATH_MUSIC, PLAYLIST[count_music].full_name);
 
-            PLAYER_MUSIC.src = path.join(PATH_MUSIC, PLAYLIST[count].full_name);
-            PLAYER_MUSIC.play();
-            LOG.save_log(`START PLAY MUSIC: ${PLAYLIST[count].full_name}`);
+            try {
+                PLAYER_MUSIC.play();
+                LOG.save_log(`START PLAY MUSIC: ${PLAYLIST[count_music].full_name}`);
+            } catch (error) { LOG.save_log("ERROR PLAY SONG: " + PLAYLIST[count_music].full_name, 'error'); console.log(error) }
 
-            const interval = setInterval(() => {
-                if (PLAYER_MUSIC.volume < volume_music) {
-                    PLAYER_MUSIC.volume += 0.1;
-                } else {
-                    PLAYER_MUSIC.volume = volume_music;
-                    clearInterval(interval);
-                }
-            }, 1000);
         });
-    } catch (error) {
-        throw error;
     }
 }
 
+function stop_work() {
 
+    try {
+        PLAYER_MUSIC.pause();
+        PLAYER_MUSIC.currentTime = 0;
+        PATH_MUSIC.src = '';
+    } catch (error) { LOG.save_log("ERROR STOP WORK STATION") }
+
+}
 
 function start_fix(adv) {
 
@@ -286,99 +305,130 @@ function reload() {
     }, 1000);
 }
 
-function play_interval_start() {
 
-    function first_play() {
-        const Adv = PLAY_LIST_INTERVAL[count_block];
-        const path_adv_mp3 = path.join(os.homedir(), 'huinity', 'adv', Adv.name_adv);
-        PLAYER_INTERVAL.src = path_adv_mp3;
-        PLAYER_INTERVAL.volume = Adv.volume / 100;
-        PLAYER_INTERVAL.play();
-        LOG.save_log(`PLAY ADV: ${Adv.name_adv}`);
-    }
-
+function play_int(player, name) {
     try {
-        fade_out(PLAYER_MUSIC).then(() => {
-            first_play();
-        }).catch((err) => {
-            console.log(err);
-        }).finally(() => {
-            console.log('start play interval');
-        });
-    } catch (error) {
-        console.log(error);
-    }
+        fade_out().then(() => { player.play() })
+            .catch((err) => {
+                LOG.save_log(`ERROR PLAY ADV: ${name}`, 'error');
+            }).finally(() => { LOG.save_log(`START PLAY ADV: ${name}`) });
+    } catch (error) { LOG.save_log(`ERROR PLAY ADV: ${name}`, 'error') }
+}
 
-    function handleError(err) {
-        console.log(err);
-        try { PLAY_NOW = "null"; PLAYER_INTERVAL.pause(); PLAYER_INTERVAL.src = "" }
-        catch (error) { console.log(error) }
+function play_interval_settings(arr) {
 
-        if (count_block + 1 >= PLAY_LIST_INTERVAL.length) { resetAndFadeIn() }
-        else { count_block++; playNextAdv() }
-    }
+    let count_adv = 0;
+    let PLAYER_INTERVAL = document.getElementById(arr[count_adv].name_adv);
+    play_int(PLAYER_INTERVAL, arr[count_adv].name_adv);
 
-    function resetAndFadeIn() {
-        count_block = 0;
-        PLAY_LIST_INTERVAL.length = 0;
-        PLAY_NOW = "null";
-        fade_in();
-    }
+    PLAYER_INTERVAL.addEventListener("playing", (event) => { console.log('play' + arr[count_adv].name_adv) });
 
-    function playNextAdv() {
-        const nextAdv = PLAY_LIST_INTERVAL[count_block];
-        const path_adv_mp3 = path.join(os.homedir(), 'huinity', 'adv', nextAdv.name_adv);
+    PLAYER_INTERVAL.addEventListener('ended', (event) => {
 
-        PLAYER_INTERVAL.pause(); // Приостанавливаем воспроизведение текущего трека (если есть)
-        PLAYER_INTERVAL.currentTime = 0; // Сбрасываем позицию воспроизведения
+        count_adv++;
+        if (count_adv < arr.length) {
+            try { PLAYER_INTERVAL.pause() } catch (error) { console.log(error) }
+            finally { PLAYER_INTERVAL = null; }
+            PLAYER_INTERVAL = document.getElementById(arr[count_adv].name_adv);
+            play_int(PLAYER_INTERVAL, arr[count_adv].name_adv);
+        } else {
+            try {
+                PLAYER_INTERVAL.pause();
+                count_adv = 0;
+                PLAYER_INTERVAL = null;
+                fade_in();
 
+                const divInterval = document.getElementById('interval_div');
+                while (divInterval.firstChild) {
+                    divInterval.removeChild(divInterval.firstChild);
+                }
 
-
-        PLAYER_INTERVAL.on('pause', () => {
-
-            PLAYER_INTERVAL.src = path_adv_mp3;
-            PLAYER_INTERVAL.volume = nextAdv.volume / 100;
-
-            const playPromise = PLAYER_INTERVAL.play();
-            if (playPromise !== undefined) {
-                playPromise.then(() => {
-                    // Успешно начато воспроизведение
-                    LOG.save_log(`PLAY ADV: ${nextAdv.name_adv}`);
-                }).catch(error => {
-                    // Обработка ошибки воспроизведения
-                    console.error('Failed to start playback:', error);
-                });
+            } catch (error) { console.log(error) }
+            finally {
+                PLAY_NOW = "null";
+                return;
             }
-
-        });
-
-    }
-
-
-
-    PLAYER_INTERVAL.addEventListener('error', handleError);
-
-    PLAYER_INTERVAL.addEventListener('ended', () => {
-        count_block++;
-        if (count_block < PLAY_LIST_INTERVAL.length) { playNextAdv() }
-        else { resetAndFadeIn() }
+        }
     });
+
+    /*     let PLAYER_INTERVAL = document.getElementById('player_interval');
+        let count_block = 0;
+        let volume_interval = 0.8;
+        
+    
+        const adv = PLAY_LIST_INTERVAL[count_block];
+        let path_adv_mp3 = path.join(PATH_APP, 'adv', adv.name_adv);
+        PLAYER_INTERVAL.src = path_adv_mp3;
+        PLAYER_INTERVAL.volume = adv.volume / 100;
+            
+        try {
+            fade_out(PLAYER_MUSIC).then(() => { PLAYER_INTERVAL.play();
+            }).catch((err) => { LOG.save_log(`ERROR PLAY ADV: ${adv.name_adv} (${err})`, 'error');
+            }).finally(() => { LOG.save_log(`START PLAY ADV: ${adv.name_adv}`) });
+        } catch (error) { LOG.save_log(`ERROR PLAY ADV: ${adv.name_adv} (${error})`, 'error') }
+    
+        function handleError(err) {
+            LOG.save_log(`ERROR PLAY ADV: ${adv.name_adv}`, 'error');
+            console.log(err);
+        }
+    
+        function resetAndFadeIn() {
+            console.log("PLAYER MUSIC volume: " + PLAYER_MUSIC.volume);
+            count_block = 0;
+            PLAY_LIST_INTERVAL.length = 0;
+            PLAY_NOW = "null";
+            try { PLAYER_INTERVAL.pause() } catch (error) { LOG.save_log(`ERROR PAUSE ADV: ${adv.name_adv}`, 'error') }
+            fade_in();
+        }
+    
+        function playNextAdv() {
+    
+            count_block++;
+            const nextAdv = PLAY_LIST_INTERVAL[count_block];
+            const path_adv_mp3 = path.join(os.homedir(), 'huinity', 'adv', nextAdv.name_adv);
+    
+            try{
+                PLAYER_INTERVAL = document.getElementById('player_interval');
+                PLAYER_INTERVAL.src = path_adv_mp3;
+                PLAYER_INTERVAL.volume = nextAdv.volume / 100;
+                PLAYER_INTERVAL.play();
+                LOG.save_log(`START PLAY ADV: ${nextAdv.name_adv}`)
+            }catch (error) { LOG.save_log(`ERROR PLAY ADV: ${nextAdv.name_adv} (${error})`, 'error'); handleError }
+    
+        }
+    
+    
+    
+        PLAYER_INTERVAL.addEventListener('error', handleError);
+    
+        PLAYER_INTERVAL.addEventListener('ended', (event) => {
+            if (count_block + 1 < PLAY_LIST_INTERVAL.length) { playNextAdv() }
+            else { resetAndFadeIn() }
+        }); 
+     */
 }
 
 function preparation_interval_adv(arr) {
 
-    if (!conflict_fix(arr)) {
-        count_block = 0;
-        let all_duration = 0;
-        for (const obj of arr) { all_duration += obj.duration; PLAY_LIST_INTERVAL.push(obj); console.log(obj.name_adv) }
-        setTimeout(() => { play_interval_start() }, all_duration * 1000);
-        arr.length = 0;
+    console.log(arr);
+    let count_duration = 0;
+    const div_interval = document.getElementById('interval_div');
 
-    } else {
-        LOG.save_log("ADD ADV TO BUFFER FOR WAITING");
-        BUFFER_ADV.push(message);
-        PLAY_NOW = "null";
+    for (const item of arr) {
+
+        count_duration += item.duration;
+
+        const player = document.createElement('audio');
+        player.src = path.join(PATH_APP, 'adv', item.name_adv);
+        player.volume = item.volume / 100;
+        player.id = item.name_adv;
+        player.className = item.id_adv;
+        player.preload = 'auto';
+        player.addEventListener('error', (err) => { LOG.save_log(`ERROR PLAY ADV: ${item.name_adv}`, 'error') });
+        div_interval.appendChild(player);
     }
+
+    setTimeout(() => { play_interval_settings(arr) }, count_duration * 1000);
 
 }
 

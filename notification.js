@@ -1,10 +1,10 @@
 const processName = "NOTIFICATION";
 const PID = process.pid;
 
-function send_msg(com = 'ONLINE', msg = PID) {
+function send_msg(com = 'ONLINE', msg = PID, nm = processName) {
   process.send({
     type: 'process:msg',
-    data: { name: processName, command: com, message: msg }
+    data: { name: nm, command: com, message: msg }
   });
 }
 send_msg();
@@ -16,78 +16,89 @@ console.log(`START ${processName} - PID: ${PID}`);
 const moment = require('moment-timezone');
 moment.tz.setDefault('Europe/Kiev');
 
-const my_time_hm = (time) => {
-  const currentTime = moment();
-  currentTime.hour = time.split(':')[0];
-  currentTime.minute = time.split(':')[1];
-  return currentTime.format('HH:mm');
-}
 
 
 const os = require('os');
 const fs = require("fs");
 const path = require('path');
-const cron = require('node-cron');
+const schedule = require('node-schedule');
+const nodeCron = require("node-cron");
 
 const OPTIONS = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'options.json'), 'utf8'));
 const playlists = OPTIONS.playlists;
 const adv_fix = OPTIONS.adv_fix;
 const adv_interval = OPTIONS.adv_interval;
 
-const notifications_playlists = { "playlists": [] };
-const notifications_work = { "work": [OPTIONS.start_app, OPTIONS.stop_app] };
-const notifications_interval = { "interval": [] };
-const notifications_fix = { "fix": [] };
+const notifications_playlists = { "PLAYLISTS": [] };
+const notifications_work = { "WORK": [OPTIONS.start_app, OPTIONS.stop_app] };
+const notifications_interval = { "INTERVAL": [] };
+const notifications_fix = { "FIX": [] };
 const NOTIFICATIONS = [notifications_work];
 
 
 if (playlists.length > 1) {
   for (item of playlists) {
-    if (!notifications_playlists.playlists.includes(item.time_start)) { notifications_playlists.playlists.push(item.time_start) }
-    if (!notifications_playlists.playlists.includes(item.time_stop)) { notifications_playlists.playlists.push(item.time_stop) }
+    if (!notifications_playlists.PLAYLISTS.includes(item.time_start)) { notifications_playlists.PLAYLISTS.push(item.time_start) }
+    if (!notifications_playlists.PLAYLISTS.includes(item.time_stop)) { notifications_playlists.PLAYLISTS.push(item.time_stop) }
   }
-  if (notifications_playlists.playlists.length > 1) { NOTIFICATIONS.push(notifications_playlists) }
+  if (notifications_playlists.PLAYLISTS.length > 1) { NOTIFICATIONS.push(notifications_playlists) }
 }
 
 if (adv_fix.length > 0) {
-  for (item of adv_fix) { notifications_fix.fix.push(item.fix) }
+  for (item of adv_fix) { notifications_fix.FIX.push(item.fix) }
   NOTIFICATIONS.push(notifications_fix);
 }
 
 if (adv_interval.length > 0) {
   for (item of adv_interval) {
-    if (!notifications_interval.interval.includes(item.interval_t)) { notifications_interval.interval.push(item.interval_t) }
+    if (!notifications_interval.INTERVAL.includes(item.interval_t)) { notifications_interval.INTERVAL.push(item.interval_t) }
   }
   NOTIFICATIONS.push(notifications_interval);
 }
 
-const TODAY_CRON = {};
+
+try {
+  console.log("START DELETE SCHEDULES");
+  for (const jobName in schedule.scheduledJobs) {
+    console.log(jobName);
+    const job = schedule.scheduledJobs[jobName];
+    job.cancel();
+    console.log("DELETE SCHEDULES: " + jobName);
+  }
+} catch (error) { console.log("ERROR DELETE SCHEDULES", "error") }
+
+
+
+const INTERVAL_LIST = [];
 
 NOTIFICATIONS.forEach(element => {
-  const KEY = Object.keys(element)[0];
-  if (KEY === "interval") {
-    TODAY_CRON[KEY] = [];
-    element[KEY].forEach(item => {
-      const temp = cron.schedule(`*/${item} * * * *`, () => {
-        send_msg('START INTERVAL', item);
-      },{ timezone: 'Europe/Kiev' });
-      TODAY_CRON[KEY].push(temp);
-    });
-  }
-  else {
-    TODAY_CRON[KEY] = [];
-    element[KEY].forEach(item => {
-      const time = item.split(':');
-      console.log(`${time[2]} ${time[1]} ${time[0]} * * *`);
-      const temp = cron.schedule(`${time[2]} ${time[1]} ${time[0]} * * *`, () => {
-        send_msg('CRON', KEY + '@' + item);
-      },{ timezone: 'Europe/Kiev' });
-      TODAY_CRON[KEY].push(temp);
-    });
+  for (const KEY in element) {
+    if (KEY == "INTERVAL") {
+      for (item of element[KEY]) {
+        addInterval(item, `${KEY}_${item}`);
+      }
+    }
+    else {
+      for (item of element[KEY]) { addTime(item, KEY) }
+    }
   }
 });
 
-NOTIFICATIONS.length = 0;
-notifications_fix.fix.length = 0;
-notifications_interval.interval.length = 0;
-notifications_playlists.playlists.length = 0;
+function addInterval(min, name) {
+
+  const minutes = parseInt(min);
+  INTERVAL_LIST.push(minutes);
+  const job = schedule.scheduleJob(`*/${minutes} * * * *`, function () { send_msg("CRON", minutes, "INTERVAL") });
+
+}
+
+function addTime(time, name){
+
+  const tm = time.split(':');
+  for(let i = 0; i < tm.length; i++) { tm[i] = parseInt(tm[i]) }
+  const cronExpression = `${tm[2]} ${tm[1]} ${tm[0]} * * *`;
+  const job = schedule.scheduleJob(cronExpression, function() { send_msg("CRON", time, name) });
+  console.log(tm);
+}
+
+const job = nodeCron.schedule('5 50 5 * * *', function() { send_msg("LOG", "DEN DEN DEN") });

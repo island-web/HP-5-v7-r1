@@ -22,7 +22,6 @@ const MY_DATE = (val) => moment(new Date(val)).format('YYYY-MM-DD');
 
 const PATH_CONFIG_FILE = path.join(os.homedir(), 'huinity', 'configs', 'station_settings.json');
 const DATA_CLIENT = JSON.parse(fs.readFileSync(PATH_CONFIG_FILE));
-const INIT = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'init.json')));
 const DATA_STATION = DATA_CLIENT.data_station[0];
 const OPTIONS = {};
 

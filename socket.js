@@ -26,6 +26,7 @@ SOCKET.on("connect_error", (error) => {
   send_msg("ERROR CONNECT", error);
 });
 
+
 SOCKET.on('config', conf => { 
   console.log("GET CONFIG STATION FROM SERVER: SUCCESSFUL");
 

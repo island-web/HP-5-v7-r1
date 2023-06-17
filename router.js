@@ -27,6 +27,9 @@ const demon_download_adv = `node ${path.join(__dirname, 'demon_download_adv.js')
 const demon_schedule = `node ${path.join(__dirname, 'demon_schedule.js')}`;
 const demon_notification = `node ${path.join(__dirname, 'demon_notification.js')}`;
 
+const tempus = require(path.join(__dirname, 'tempus.js'));
+const OPTIONS = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'options.json')), 'utf8');
+
 
 send_manager_msg("CONNECT TO SERVER");
 console.log("CONNECT TO SERVER");
@@ -70,12 +73,18 @@ function handling(msg) {
 
             break;
 
+        case "ERROR CONNECT":
+            send_manager_msg("WORK MSG", "STATION WORK OFFLINE. NO CONNECT WITH SERVER");
+            try { exec(demon_schedule) } catch (error) { send_manager_msg("ERROR START SCHEDULE"); console.log(error) }
+            break;
+
+
         case "SCHEDULE UPADATE: SUCCESSFUL":
             if (STATE.first_start !== "init_start") {
                 try { exec(demon_notification) } catch (error) { send_manager_msg("ERROR START SCHEDULE"); console.log(error) }
                 console.log(msg.data.command);
                 send_manager_msg("WORK MSG", msg.data.command);
-                try { exec(demon_worker) } catch (error) { send_manager_msg("ERROR START SCHEDULE"); console.log(error) }
+                try { exec(demon_worker) } catch (error) { send_manager_msg("ERROR START WORKER"); console.log(error) }
             }
 
             break;
@@ -86,25 +95,34 @@ function handling(msg) {
             break;
 
         case "ERROR DOWNLOAD SONGS 8":
-            console.log(msg.data.command);
             send_manager_msg("WORK MSG", msg.data.command);
             pm2.restart(msg.process.pm_id);
             break;
 
         case "START WORK":
-            console.log(msg.data.command);
-            send_manager_msg(msg.data.command);
+            console.log("start_work")
+            send_manager_msg("START WORK TIME");
             break;
 
-        case "START INTERVAL":
-            console.log(msg.data.command, msg.data.message);
-            work_notification(msg.data.command, msg.data.message);
+        case "STOP WORK":
+            send_manager_msg("STOP WORK TIME");
             break;
 
         case "CRON":
-            const msg_cron = msg.data.message.split("@");
-            work_notification(msg_cron[0], msg_cron[1]);
+            console.log(msg.data.command);
+            work_notification(msg.data.name, msg.data.message);
             break;
+
+        case "LOG":
+            LOG.save_log(msg.data.message);
+            console.log(msg.data.message);
+            break;
+
+        case "ERROR":
+            LOG.save_log(msg.data.message, "error");
+            break;
+
+
         default:
             break;
     }
@@ -112,40 +130,32 @@ function handling(msg) {
 }
 
 
+
 function work_notification(type, param) {
 
-    const OPTIONS = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'options.json')), 'utf8');
-    switch (type) {
-        case "START INTERVAL":
-            const adv_interval = [];
-            for (item of OPTIONS.adv_interval) {
-                if (item.interval_t == param && moment().format("HH:mm:ss") >= item.time_start && moment().format("HH:mm:ss") <= item.time_stop) {
+
+    if (type === "INTERVAL") {
+        const currentTime = moment(new Date()).format("HH:mm:ss");
+        const adv_interval = [];
+        for (item of OPTIONS.adv_interval) {
+            if (parseInt(item.interval_t) === parseInt(param)) {
+                if (currentTime >= item.time_start && currentTime <= item.time_stop) {
                     adv_interval.push(item);
+                    console.log("[ " + currentTime + " ] - " + param + ' |=> ' + item.name_adv);
                 }
             }
-            if (adv_interval.length > 0) { console.log("START INTERVAL ADV", adv_interval); send_manager_msg("START INTERVAL ADV", adv_interval) }
-            break;
-
-        case "playlists":
-            send_manager_msg("RELOAD PLAYLISTS");
-            console.log("RELOAD PLAYLISTS");
-            break;
-
-        case "fix":
-            let adv_fix;
-            for (item of OPTIONS.adv_fix) {
-                if (item.fix == param) {
-                    adv_fix = item;
-                    send_manager_msg("FIX", adv_fix);
-                    console.log("FIX", adv_fix);
-                }
-            }
-            break;
-
-        case "work":
-            send_manager_msg("RELOAD APP");
-            console.log("WORK TIME RELOAD APP");
-            break;
+        }
+        if(tempus.between(OPTIONS.start_app, OPTIONS.stop_app)){
+            if (adv_interval.length > 0) { send_manager_msg("INTERVAL ADV", adv_interval); adv_interval.length = 0 }
+        }
     }
-    const adv_interval = OPTIONS.adv_interval;
+
+    else if (type === "FIX") { if(tempus.between(OPTIONS.start_app, OPTIONS.stop_app)){ send_manager_msg("EVENT FIX") }}
+
+    else if (type === "PLAYLISTS") { send_manager_msg("EVENT PLAYLIST"); console.log("RELOAD STATION. UPDATE PROGRAM DEY FOR" + type) }
+    else if (type === "WORK") { send_manager_msg("WORK MSG", "EVENT WORK TIME"); pm2.reload("WORKER") }
+
+
+
 }
+

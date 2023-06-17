@@ -8,6 +8,6 @@ pm2.start({
         maxMemoryRestart: '2G',
         instances: 1,
         autorestart: true,
-        exec_mode: 'cluster'
+        exec_mode: 'fork'
     }
 )
