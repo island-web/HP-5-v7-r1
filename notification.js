@@ -75,7 +75,7 @@ NOTIFICATIONS.forEach(element => {
   for (const KEY in element) {
     if (KEY == "INTERVAL") {
       for (item of element[KEY]) {
-        addInterval(item, `${KEY}_${item}`);
+        addInterval(item);
       }
     }
     else {
@@ -84,11 +84,11 @@ NOTIFICATIONS.forEach(element => {
   }
 });
 
-function addInterval(min, name) {
+function addInterval(min) {
 
   const minutes = parseInt(min);
   INTERVAL_LIST.push(minutes);
-  const job = schedule.scheduleJob(`*/${minutes} * * * *`, function () { send_msg("CRON", minutes, "INTERVAL") });
+  const job = nodeCron.schedule(`*/${minutes} * * * *`, function () { send_msg("CRON", minutes, "INTERVAL") }, {timezone: "Europe/Kiev"});
 
 }
 
@@ -97,8 +97,7 @@ function addTime(time, name){
   const tm = time.split(':');
   for(let i = 0; i < tm.length; i++) { tm[i] = parseInt(tm[i]) }
   const cronExpression = `${tm[2]} ${tm[1]} ${tm[0]} * * *`;
-  const job = schedule.scheduleJob(cronExpression, function() { send_msg("CRON", time, name) });
+  const job = nodeCron.schedule(cronExpression, function() { send_msg("CRON", time, name) }, {timezone: "Europe/Kiev"});
   console.log(tm);
 }
 
-const job = nodeCron.schedule('5 50 5 * * *', function() { send_msg("LOG", "DEN DEN DEN") });

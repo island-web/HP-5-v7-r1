@@ -26,6 +26,7 @@ send_msg();
 
 
 function check_adv() {
+    
     let arr_adv = [];
     const ALL_ADV = DATA_CLIENT.list_adv;
     for (key of Object.keys(ALL_ADV)) { 
@@ -35,6 +36,7 @@ function check_adv() {
     } 
     send_msg('WORKER', 'ALL COUNT ADV FOR DOWNLOAD: ' + arr_adv.length);
     return arr_adv;
+
 }
 
 
@@ -64,3 +66,4 @@ function download_ad() {
 
     })()
 }
+process.on('message', (msg) => { console.log(msg) });

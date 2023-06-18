@@ -14,7 +14,6 @@ const pm2 = require('pm2');
 const moment = require('moment-timezone');
 moment.tz.setDefault('Europe/Kiev');
 
-
 const PATH_APP = path.join(os.homedir(), 'huinity');
 const LOG = require(path.join(__dirname, 'save_log.js'));
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'init.json')));
@@ -65,7 +64,6 @@ function handling(msg) {
     switch (msg.data.command) {
 
         case "CONFIG OK":
-            console.log(msg.data.command);
             send_manager_msg("WORK MSG", msg.data.command);
             try { exec(demon_download_songs) } catch (error) { send_manager_msg("ERROR START DOWNLOAD SONGS"); console.log(error) }
             try { exec(demon_download_adv) } catch (error) { send_manager_msg("ERROR START DOWNLOAD ADV"); console.log(error) }
@@ -150,7 +148,13 @@ function work_notification(type, param) {
         }
     }
 
-    else if (type === "FIX") { if(tempus.between(OPTIONS.start_app, OPTIONS.stop_app)){ send_manager_msg("EVENT FIX") }}
+    else if (type === "FIX") {
+        if(tempus.between(OPTIONS.start_app, OPTIONS.stop_app)){
+            let fix_adv;
+            for (item of OPTIONS.adv_fix) { fix_adv = item }
+            send_manager_msg("EVENT FIX", fix_adv);
+        }
+    }
 
     else if (type === "PLAYLISTS") { send_manager_msg("EVENT PLAYLIST"); console.log("RELOAD STATION. UPDATE PROGRAM DEY FOR" + type) }
     else if (type === "WORK") { send_manager_msg("WORK MSG", "EVENT WORK TIME"); pm2.reload("WORKER") }

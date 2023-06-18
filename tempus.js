@@ -15,3 +15,16 @@ module.exports.between = ((from, to, val = "null") => {
         return false;
     }
 });
+
+module.exports.add_seconds = ((seconds, time = "null") => {
+
+    let tm;
+    if(time === "null") { tm = moment(new Date(), 'HH:mm:ss') }
+    else { tm = moment(time, "HH:mm:ss") }
+
+    const new_tm = tm.add(seconds, 's');
+
+    return moment(new_tm, "HH:mm:ss");
+})
+
+module.exports.current_time = ((my_format = "HH:mm:ss") => { return moment(new Date(), my_format) })

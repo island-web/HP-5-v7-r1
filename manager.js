@@ -7,14 +7,17 @@ const { exec } = require('child_process');
 const pm2 = require('pm2');
 const path = require('path');
 const fs = require('fs');
+
 const moment = require('moment-timezone');
 moment.tz.setDefault('Europe/Kiev');
+const tempus = require(path.join(__dirname, 'tempus.js'));
 
 const data_start = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'init.json'), 'utf-8'));
 const OPTIONS = JSON.parse(fs.readFileSync(path.join(__dirname, 'storage', 'options.json'), 'utf-8'));
 const LOG = require(path.join(__dirname, 'save_log.js'));
 const PATH_APP = path.join(os.homedir(), 'huinity');
 const PATH_MUSIC = path.join(os.homedir(), 'huinity', 'music');
+const PATH_ADV = path.join(os.homedir(), 'huinity', 'adv');
 
 const BUFFER_ADV = [];
 
@@ -22,16 +25,11 @@ const PLAYER_MUSIC = document.getElementById('player_music');
 PLAYER_MUSIC.volume = 0.7;
 const volume_music = 0.7;
 
-const PLAYER_FIX = document.getElementById('player_fix');
-const volume_fix = 0.8;
-PLAYER_FIX.volume = volume_fix;
-
-
-
 
 let count_music = 0;
 let PLAY_NOW = "null";
-let WORK_NOW = "false";
+let player_work_now = false;
+let reload_player = false;
 
 
 function fade_out() {
@@ -80,9 +78,7 @@ pm2.connect((err) => {
     });
 
     pm2.launchBus((err, message) => {
-        if (err) {
-            throw err;
-        }
+        if (err) { throw err }
 
         message.on('proc:msg', (packet) => {
             const { command, message, name } = packet.data;
@@ -104,45 +100,45 @@ pm2.connect((err) => {
                     if (data_start.first_start === 'init_start') {
                         fs.writeFileSync(path.join(__dirname, 'storage', 'init.json'), JSON.stringify({ "first_start": "init_end" }));
                         ipcRenderer.send('close_window_init');
-                        pm2.restart('SCHEDULE');
                     }
+                    pm2.reload('ROUTER');
                     break;
 
                 case "END DOWNLOAD ADV":
                     LOG.save_log(command);
+                    if (data_start.first_start !== 'init_start') { pm2.reload('ROUTER') }
                     break;
 
                 case "START WORK TIME":
                     LOG.save_log(command + "STATION");
                     if (data_start.first_start !== "init_start") {
-                        start_work();
+                        if (player_work_now) { reload_player = true; }
+                        else { start_work_player() }
                     }
                     break;
 
                 case "STOP WORK TIME":
                     LOG.save_log("RELOAD PLAYER ---> [command: " + command + "]");
-                    fade_out();
                     stop_work();
                     break;
 
                 case "EVENT FIX":
-                    if (WORK_NOW === "true") {
-                        LOG.save_log("PLAY FIX ADV---> [command: " + message + "]");
-                        start_fix(message);
-                    }
+                    PLAY_NOW = "fix";
+                    LOG.save_log("PLAY FIX ADV---> [command: " + message + "]");
+                    preparation_fix(message);
                     break;
 
                 case "INTERVAL ADV":
-                    if (WORK_NOW === "true") {
-                        LOG.save_log(command);
-                        if (PLAY_NOW === "null") {
-                            PLAY_NOW = "interval";
-                            preparation_interval_adv(message);
-                        } else {
-                            for (const obj of message) { BUFFER_ADV.push(obj) }
-                            LOG.save_log("INTERVAL ADV ADD IN BUFFER");
-                        }
+
+                    LOG.save_log(command);
+                    if (PLAY_NOW === "null") {
+                        PLAY_NOW = "interval";
+                        preparation_interval_adv(message);
+                    } else {
+                        for (const obj of message) { BUFFER_ADV.push(obj) }
+                        LOG.save_log("INTERVAL ADV ADD IN BUFFER");
                     }
+
                     break;
 
                 case "EVENT PLAYLIST":
@@ -161,15 +157,28 @@ pm2.connect((err) => {
 
 
 
-function conflict_fix(arr) {
-    console.log('conflict_fix');
+function conflict_fix(count) {
+
+    const end_time_interval = tempus.add_seconds(count);
+    const list_fix = OPTIONS.adv_fix.filter(item => item.fix !== null);
+    const current = tempus.current_time();
+
+
+    for (fix of list_fix) {
+        console.log("ENT_TIME_INTER VAL: " + end_time_interval + " --- START_FIX: " + fix.fix);
+        if (tempus.between(current, end_time_interval, fix.fix)) {
+            return fix.duration;
+        }
+    }
+
     return false;
+
 }
 
 
 
-function start_work() {
-    WORK_NOW = "true";
+function start_work_player() {
+    player_work_now = true;
     PLAYLIST = create_current_playlist();
 
     if (PLAYLIST.length === 0) { LOG.save_log("PLAYLIST IS EMPTY", 'error'); return; }
@@ -203,10 +212,7 @@ function start_work() {
 
 
         PLAYER_MUSIC.addEventListener('ended', () => {
-            /*  if (UPDATE_PROGRAM === "true") {
-                 pm2.reload("ROUTER");
-                 window.location.reload();
-             } */
+            if (reload_player) { window.location.reload(); return; }
 
             if (BUFFER_ADV.length > 0 && PLAY_NOW === "null") {
                 PLAY_NOW = "interval";
@@ -234,48 +240,37 @@ function start_work() {
 function stop_work() {
 
     try {
-        PLAYER_MUSIC.pause();
-        PLAYER_MUSIC.currentTime = 0;
-        PATH_MUSIC.src = '';
-    } catch (error) { LOG.save_log("ERROR STOP WORK STATION") }
+        fade_out().then(() => { window.location.reload() })
+    } catch (error) { LOG.save_log("ERROR FADE FOR STOP", "error"); window.location.reload(); }
 
 }
 
-function start_fix(adv) {
 
-    const path_adv = path.join(PATH_APP, 'adv', adv.name_adv);
-    PLAYER_FIX.src = path_adv;
-    PLAY_NOW = "fix";
-    PLAYER_FIX.volume = adv.volume / 100;
+function preparation_fix(adv) {
 
+    const div_for_fix = document.getElementById('fixed');
+    const fixed = document.createElement('audio');
+
+
+    fixed.id = adv.name_adv;
+    fixed.src = path.join(PATH_ADV, adv.name_adv);
+    fixed.volume = adv.volume / 100;
+    fixed.preload = "true";
+    div_for_fix.innerHTML = fixed;
 
     try {
-        fade_out(PLAYER_MUSIC).then(() => {
-            PLAYER_FIX.play();
-        }).catch((err) => {
-            console.log(err);
-        }).finally(() => {
-            console.log('start play' + adv.name_adv);
-        });
-    } catch (error) {
-        console.log(error);
-    }
+        fade_out().then(() => { fixed.play() })
+            .catch((err) => {
+                console.log(err);
+                LOG.save_log(`ERROR PLAY ADV: ${adv.name_adv}`, 'error');
+            }).finally(() => {
+                LOG.save_log('START PLAY FIXED ADV' + adv.name_adv);
+            });
+    } catch (error) { console.log(error) }
 
-    PLAYER_FIX.addEventListener('error', (err) => {
-        console.log(err);
-        LOG.save_log(`ERROR PLAY ADV: ${adv.name} (${err})`, 'error');
-        try { PLAYER_FIX.pause(); PLAYER_FIX.currentTime = 0; }
-        catch (error) { console.log(error) }
-        PLAY_NOW = "null";
-        fade_in();
-    });
+    fixed.addEventListener('error', function (event) { console.log("ERROR FIX ADV") });
+    fixed.addEventListener('ended', () => { fixed.remove(); fade_in() });
 
-    PLAYER_FIX.addEventListener('ended', () => {
-        PLAYER_FIX.pause();
-        PLAYER_FIX.currentTime = 0;
-        PLAY_NOW = "null";
-        fade_in();
-    });
 }
 
 function create_current_playlist() {
@@ -350,74 +345,17 @@ function play_interval_settings(arr) {
             }
         }
     });
-
-    /*     let PLAYER_INTERVAL = document.getElementById('player_interval');
-        let count_block = 0;
-        let volume_interval = 0.8;
-        
-    
-        const adv = PLAY_LIST_INTERVAL[count_block];
-        let path_adv_mp3 = path.join(PATH_APP, 'adv', adv.name_adv);
-        PLAYER_INTERVAL.src = path_adv_mp3;
-        PLAYER_INTERVAL.volume = adv.volume / 100;
-            
-        try {
-            fade_out(PLAYER_MUSIC).then(() => { PLAYER_INTERVAL.play();
-            }).catch((err) => { LOG.save_log(`ERROR PLAY ADV: ${adv.name_adv} (${err})`, 'error');
-            }).finally(() => { LOG.save_log(`START PLAY ADV: ${adv.name_adv}`) });
-        } catch (error) { LOG.save_log(`ERROR PLAY ADV: ${adv.name_adv} (${error})`, 'error') }
-    
-        function handleError(err) {
-            LOG.save_log(`ERROR PLAY ADV: ${adv.name_adv}`, 'error');
-            console.log(err);
-        }
-    
-        function resetAndFadeIn() {
-            console.log("PLAYER MUSIC volume: " + PLAYER_MUSIC.volume);
-            count_block = 0;
-            PLAY_LIST_INTERVAL.length = 0;
-            PLAY_NOW = "null";
-            try { PLAYER_INTERVAL.pause() } catch (error) { LOG.save_log(`ERROR PAUSE ADV: ${adv.name_adv}`, 'error') }
-            fade_in();
-        }
-    
-        function playNextAdv() {
-    
-            count_block++;
-            const nextAdv = PLAY_LIST_INTERVAL[count_block];
-            const path_adv_mp3 = path.join(os.homedir(), 'huinity', 'adv', nextAdv.name_adv);
-    
-            try{
-                PLAYER_INTERVAL = document.getElementById('player_interval');
-                PLAYER_INTERVAL.src = path_adv_mp3;
-                PLAYER_INTERVAL.volume = nextAdv.volume / 100;
-                PLAYER_INTERVAL.play();
-                LOG.save_log(`START PLAY ADV: ${nextAdv.name_adv}`)
-            }catch (error) { LOG.save_log(`ERROR PLAY ADV: ${nextAdv.name_adv} (${error})`, 'error'); handleError }
-    
-        }
-    
-    
-    
-        PLAYER_INTERVAL.addEventListener('error', handleError);
-    
-        PLAYER_INTERVAL.addEventListener('ended', (event) => {
-            if (count_block + 1 < PLAY_LIST_INTERVAL.length) { playNextAdv() }
-            else { resetAndFadeIn() }
-        }); 
-     */
 }
 
 function preparation_interval_adv(arr) {
 
-    console.log(arr);
+
     let count_duration = 0;
     const div_interval = document.getElementById('interval_div');
 
+
     for (const item of arr) {
-
         count_duration += item.duration;
-
         const player = document.createElement('audio');
         player.src = path.join(PATH_APP, 'adv', item.name_adv);
         player.volume = item.volume / 100;
@@ -428,7 +366,20 @@ function preparation_interval_adv(arr) {
         div_interval.appendChild(player);
     }
 
-    setTimeout(() => { play_interval_settings(arr) }, count_duration * 1000);
+
+    let interval_waite_play_adv = setTimeout(() => {
+
+        const conflict = conflict_fix(count_duration);
+        if(!conflict) { play_interval_settings(arr) }
+        else {
+            setTimeout(() => {
+                play_interval_settings(arr);
+                clearTimeout(interval_waite_play_adv);
+            }, conflict * 1000 + count_duration * 1000);
+        }
+        
+    }, count_duration * 1000)
+
 
 }
 
